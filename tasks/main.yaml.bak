@@ -1,0 +1,151 @@
+
+- name: Vérifier que les variables requises sont définies
+  assert:
+    that:
+      - app_directory is defined
+      - app_repository is defined
+      - app_port is defined
+    fail_msg: "Variables requises manquantes: app_directory, app_repository, app_port"
+
+- name: Mettre à jour les paquets (Debian/Ubuntu)
+  apt:
+    update_cache: yes
+    upgrade: dist
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Mettre à jour les paquets (RedHat/Rocky)
+  dnf:
+    name: '*'
+    state: latest
+    update_cache: yes
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Installer Git (Debian/Ubuntu)
+  apt:
+    name: git
+    state: present
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Installer Git (RedHat/Rocky)
+  dnf:
+    name: 
+      - git
+      - procps-ng
+    state: present
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Télécharger le script d'installation Node.js (RedHat/Rocky)
+  get_url:
+    url: "{{ nodejs_setup_url | default('https://rpm.nodesource.com/setup_23.x') }}"
+    dest: /tmp/setup_node.sh
+    mode: '0755'
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Exécuter le script Node.js (RedHat/Rocky)
+  command: bash /tmp/setup_node.sh
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Installer Node.js (RedHat/Rocky)
+  dnf:
+    name: nodejs
+    state: present
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Installer Node.js et npm (Debian/Ubuntu)
+  apt:
+    name:
+      - nodejs
+      - npm
+    state: present
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Créer le répertoire parent s'il n'existe pas
+  file:
+    path: "{{ app_directory | dirname }}"
+    state: directory
+    mode: '0755'
+
+- name: Vérifier si le répertoire d'application existe
+  stat:
+    path: "{{ app_directory }}"
+  register: app_dir_stat
+
+- name: Supprimer l'ancien répertoire d'application s'il existe
+  file:
+    path: "{{ app_directory }}"
+    state: absent
+  when: app_dir_stat.stat.exists
+
+- name: Cloner le dépôt de l'application
+  git:
+    repo: "{{ app_repository }}"
+    dest: "{{ app_directory }}"
+    version: HEAD
+    force: yes
+
+- name: Installer les dépendances npm
+  npm:
+    path: "{{ app_directory }}"
+    state: present
+
+- name: Compiler l'application (build)
+  command: npm run build
+  args:
+    chdir: "{{ app_directory }}"
+
+- name: Installer le serveur statique "serve"
+  npm:
+    name: serve
+    global: yes
+    state: present
+
+- name: Vérifier les processus serve existants
+  shell: pgrep -f "serve.*dist" || echo "Aucun processus serve trouvé"
+  register: existing_processes
+  ignore_errors: yes
+  changed_when: false
+
+- name: Arrêter les processus serve existants
+  shell: pkill -f "serve.*dist"
+  when: existing_processes.stdout != "Aucun processus serve trouvé" and existing_processes.stdout != ""
+  ignore_errors: yes
+
+- name: Attendre l'arrêt complet des processus
+  wait_for:
+    port: "{{ app_port }}"
+    state: stopped
+    timeout: 10
+  ignore_errors: yes
+  when: existing_processes.stdout != "Aucun processus serve trouvé" and existing_processes.stdout != ""
+
+- name: Créer le fichier de log
+  file:
+    path: "{{ log_file | default('/var/log/quiz-app.log') }}"
+    state: touch
+    mode: '0644'
+
+- name: Lancer l'application avec "serve"
+  shell: |
+    cd {{ app_directory }}
+    nohup serve -s dist -l {{ app_port }} > {{ log_file | default('/var/log/quiz-app.log') }} 2>&1 &
+    echo $! > /var/run/quiz-app.pid
+  async: 10
+  poll: 0
+  register: app_start
+
+- name: Attendre que l'application démarre
+  wait_for:
+    port: "{{ app_port }}"
+    timeout: 120
+    delay: 5
+
+- name: Vérifier que l'application est accessible
+  uri:
+    url: "http://localhost:{{ app_port }}"
+    method: GET
+    timeout: 10
+    status_code: 200
+  register: app_check
+  retries: 5
+  delay: 10
+  until: app_check.status == 200

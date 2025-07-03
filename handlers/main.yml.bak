@@ -1,0 +1,10 @@
+---
+- name: Restart quiz app
+  shell: |
+    pkill -f "serve.*dist" || true
+    sleep 2
+    nohup serve -s dist -l {{ app_port }} > /var/log/quiz-app.log 2>&1 &
+  args:
+    chdir: "{{ app_directory }}"
+  async: 3600
+  poll: 0

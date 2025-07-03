@@ -1,0 +1,5 @@
+- name: Déployer quiz-ansible via le rôle
+  hosts: all
+  become: true
+  roles:
+    - /root/projet/roles/ansible-role-quiz/

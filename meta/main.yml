@@ -1,0 +1,23 @@
+galaxy_info:
+  author: DBN12
+  description: "Rôle portable pour déployer l'application Node.js quiz-ansible"
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Debian
+      versions:
+        - buster
+        - bullseye
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+    - name: RedHat
+      versions:
+        - 8
+        - 9
+    - name: Rocky
+      versions:
+        - 8
+collections: []
+dependencies: []

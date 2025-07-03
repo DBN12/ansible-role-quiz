@@ -1,0 +1,5 @@
+app_repository: "https://github.com/franklin-tutorials/quiz-ansible.git"
+app_directory: "/opt/quiz-ansible"
+app_port: 3000
+nodejs_setup_url: "https://rpm.nodesource.com/setup_23.x"
+nodejs_version: "23"
